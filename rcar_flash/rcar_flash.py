@@ -10,6 +10,7 @@ import pathlib
 import traceback
 import time
 from string import printable
+from importlib.resources import files
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
@@ -23,7 +24,10 @@ def main():
         '--conf',
         help='Name of config file. Default is "rcar_flash.yaml"',
         type=argparse.FileType('r'),
-        default='rcar_flash.yaml')
+        default=str(files("rcar_flash").joinpath("rcar_flash.yaml")))
+
+    test = str(files("rcar_flash").joinpath("rcar_flash.yaml"))
+    print("SEE rcar_flash.yaml: " + test)
 
     subparsers = parser.add_subparsers(required=True, dest="action")
 
@@ -223,13 +227,19 @@ def do_flash(conf, args):  # noqa: C901
         if not args.cpld:
             log.info("Please ensure that board is in the serial download mode")
         if args.flash_writer == "DEFAULT":
-            fname = board["flash_writer"]
+            resource_name = board["flash_writer"]
+            print("SEE resource_name: ", resource_name)
+            resource_path = files("rcar_flash").joinpath(resource_name)
+            print("SEE resource_path: ", resource_path)
+            if not resource_path.exists():
+                raise Exception(f"Flash writer file '{resource_name}' not found in rcar_flash.mot package resources.")
+            flash_writer_path = str(resource_path)
         else:
-            fname = args.flash_writer
-        if not os.path.exists(fname):
-            raise Exception(f"Flash write file {fname} does not exists!")
-        log.info(f"Sending flash writer file {fname}...")
-        send_flashwriter(board, fname, conn)
+            flash_writer_path = args.flash_writer
+            if not os.path.exists(flash_writer_path):
+                raise Exception(f"Flash write file {flash_writer_path} does not exists!")
+        log.info(f"Sending flash writer file {flash_writer_path}...")
+        send_flashwriter(board, flash_writer_path, conn)
         if "sup_baud" in board:
             # Increase comm speed if SUP command is available
             conn_send(conn, "sup\r")
@@ -354,6 +364,7 @@ def conn_wait_for(conn, expect: str):
         if not data:
             raise TimeoutError(f"Timeout waiting for `{expect}` from the device")
         rcv_char = chr(data[0])
+        print(rcv_char, end='', flush=True)
         if rcv_char in printable or rcv_char == '\b':
             print(rcv_char, end='', flush=True)
         rcv_str += rcv_char
